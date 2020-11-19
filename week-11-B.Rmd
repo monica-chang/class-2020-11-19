@@ -36,17 +36,74 @@ week_11_folds <- vfold_cv(week_11_train, v = 5)
 
 * Come up with at least two models that a) you like and would be willing to defend and b) are somewhat different from one another. The two most common model types in these situations are "simple" and "full". The former includes a minimum number of variables. The latter errs on the side of variable inclusion and the creation of interaction terms.
 
+```{r sc1}
+
+set.seed(10)
+
+simple_wflow <- workflow() %>%
+  add_recipe(recipe(primary_06 ~ treatment,
+                    data = week_11_train) %>%
+             step_dummy(all_nominal())) %>%
+  add_model(linear_reg() %>% set_engine("stan"))
+
+simple_wflow %>% 
+  fit(data = week_11_train) %>% # Fit the model on training data
+  predict(new_data = week_11_test) %>% # Test the model on testing data.
+  bind_cols(week_11_test %>% select(primary_06)) %>% 
+  metrics(truth = primary_06, estimate = `.pred`)
+
+full_wflow <- workflow() %>%
+  
+  # I only use primary_02 instead of both primary_02 and primary_04 since '02
+  # was a midterm primary.
+  
+  add_recipe(recipe(primary_06 ~ treatment + primary_02 + age + sex + solo,
+                    data = week_11_train) %>%
+             step_dummy(all_nominal()) %>%
+             step_interact(~ starts_with("treatment"):starts_with("sex"))) %>%
+  add_model(linear_reg() %>% set_engine("stan"))
+
+full_wflow %>% 
+  fit(data = week_11_train) %>% # Fit the model on training data
+  predict(new_data = week_11_test) %>% # Test the model on testing data.
+  bind_cols(week_11_test %>% select(primary_06)) %>% 
+  metrics(truth = primary_06, estimate = `.pred`)
+
+```
+
 * Which data set should we use for this? Why?
 
-* What does it mean if, for example, the coefficient of `treatmentNeighbors` varies across models?
+The week_11_training dataset because we don't want to over-fit our data by 
+including the testing dataset.
+
+* What does it mean if, for example, the coefficient of `treatmentNeighbors` 
+varies across models?
+
+This means the Neighbors treatment in the first model might be unwittingly
+including the effect of another variable and overestimating the effect of the
+Neighbors treatment.
 
 * Do things change if we start using all the data? Is there a danger in doing so?
+
+If we use all the data, there's danger of over-fitting.
 
 
 ## Scene 2
 
 **Prompt:** Compare your two models using cross-validation.
 
+```{r sc2}
+
+simple_wflow %>%
+  fit_resamples(resamples = week_11_folds) %>%
+  collect_metrics()
+
+full_wflow %>%
+  fit_resamples(resamples = week_11_folds) %>%
+  collect_metrics()
+
+```
+The average RMSE value for the full model is slightly lower than the simple model.
 
 ## Scene 3
 
@@ -54,7 +111,15 @@ week_11_folds <- vfold_cv(week_11_train, v = 5)
 
 * If you have time, redo all the important steps above with the full data set.
 
+```{r sc3}
 
+full_wflow %>% 
+  fit(data = week_11) %>% # Fit the model on all the data
+  predict(new_data = week_11_test) %>% # Test the model on testing data.
+  bind_cols(week_11_test %>% select(primary_06)) %>% 
+  metrics(truth = primary_06, estimate = `.pred`)
+  
+```
 
 ## Optional Problems
 
@@ -62,6 +127,19 @@ Challenge groups should be encouraged to make some plots. Hard thing about these
 
 * Plot the primary_06 versus age for all the data. There are many ways to do that. Here is mine.
 
+```{r sc4}
+
+week_11 %>%
+  group_by(age, primary_06) %>%
+  summarize(primary_06_yes = n()) %>%
+  filter(primary_06 == 1) %>%
+  ggplot(aes(x = age, y = primary_06_yes)) +
+    geom_col(color = "white") +
+    labs(title = "Distribution of voter turnout by age in 2006 primary",
+         x = "Age",
+         y = "Primary '06 Voter Turnout")
+
+```
 * Plot the predicted values for the simple model versus the predicted values for the full model. How different are they?
 
 * Plot the predicted values for the full model (fitted with all the training data) against the true values? Is there anything strange? Are there categories of observations with big residuals? Looking for such things can provide clues about how to improve the model.
